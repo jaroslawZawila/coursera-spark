@@ -2,7 +2,6 @@ package wikipedia
 
 import org.apache.spark.SparkConf
 import org.apache.spark.SparkContext
-
 import org.apache.spark.rdd.RDD
 
 case class WikipediaArticle(title: String, text: String)
@@ -19,14 +18,14 @@ object WikipediaRanking {
   val wikiRdd: RDD[WikipediaArticle] = sc.textFile(WikipediaData.filePath).map(WikipediaData.parse(_)).persist()
 
   /** Returns the number of articles on which the language `lang` occurs.
-   *  Hint1: consider using method `aggregate` on RDD[T].
-   *  Hint2: should you count the "Java" language when you see "JavaScript"?
-   *  Hint3: the only whitespaces are blanks " "
-   *  Hint4: no need to search in the title :)
-   */
+    *  Hint1: consider using method `aggregate` on RDD[T].
+    *  Hint2: should you count the "Java" language when you see "JavaScript"?
+    *  Hint3: the only whitespaces are blanks " "
+    *  Hint4: no need to search in the title :)
+    */
   def occurrencesOfLang(lang: String, rdd: RDD[WikipediaArticle]): Int ={
     val regex = lang + "\\W"
-    rdd.aggregate(0)((number, wiki) => regex.r.findAllIn(wiki.text).length, (x, y) => x + y)
+    rdd.aggregate(0)((number, wiki) => regex.r.findFirstIn(wiki.text) match {case Some(x) => number + 1; case _ => number}, (x, y) => x + y)
   }
   /* (1) Use `occurrencesOfLang` to compute the ranking of the languages
    *     (`val langs`) by determining the number of Wikipedia articles that
@@ -38,11 +37,11 @@ object WikipediaRanking {
    */
   def rankLangs(langs: List[String], rdd: RDD[WikipediaArticle]): List[(String, Int)] =
     langs.map(lang => (lang, occurrencesOfLang(lang, rdd))).sortBy(_._2)(Ordering[Int].reverse)
-
   /* Compute an inverted index of the set of articles, mapping each language
    * to the Wikipedia pages in which it occurs.
    */
-  def makeIndex(langs: List[String], rdd: RDD[WikipediaArticle]): RDD[(String, Iterable[WikipediaArticle])] = ???
+  def makeIndex(langs: List[String], rdd: RDD[WikipediaArticle]): RDD[(String, Iterable[WikipediaArticle])] =
+    rdd.flatMap((wiki) => langs.filter(wiki.text.contains(_)).map((_, wiki))).groupBy(_._1).mapValues(_.map(_._2)).cache()
 
   /* (2) Compute the language ranking again, but now using the inverted index. Can you notice
    *     a performance improvement?
@@ -50,7 +49,11 @@ object WikipediaRanking {
    *   Note: this operation is long-running. It can potentially run for
    *   several seconds.
    */
-  def rankLangsUsingIndex(index: RDD[(String, Iterable[WikipediaArticle])]): List[(String, Int)] = ???
+  def rankLangsUsingIndex(index: RDD[(String, Iterable[WikipediaArticle])]): List[(String, Int)] =
+    index.map( t => (t._1, t._2.map(wiki => {
+      val regex = t._1.r
+      regex.findAllIn(wiki.text).length
+    }).sum)).sortBy(_._2, false).collect().toList
 
   /* (3) Use `reduceByKey` so that the computation of the index and the ranking are combined.
    *     Can you notice an improvement in performance compared to measuring *both* the computation of the index
@@ -59,7 +62,12 @@ object WikipediaRanking {
    *   Note: this operation is long-running. It can potentially run for
    *   several seconds.
    */
-  def rankLangsReduceByKey(langs: List[String], rdd: RDD[WikipediaArticle]): List[(String, Int)] = ???
+  def rankLangsReduceByKey(langs: List[String], rdd: RDD[WikipediaArticle]): List[(String, Int)] = {
+    rdd.flatMap(wiki => {
+      langs.filter(lang => wiki.text.split(" ").contains(lang)).map((_, 1))
+    }).reduceByKey(_ + _).sortBy(_._2, false).collect().toList
+  }
+
 
   def main(args: Array[String]) {
 
@@ -72,7 +80,7 @@ object WikipediaRanking {
     /* Languages ranked according to (2), using the inverted index */
     val langsRanked2: List[(String, Int)] = timed("Part 2: ranking using inverted index", rankLangsUsingIndex(index))
 
-    /* Languages ranked according to (3) */
+//    /* Languages ranked according to (3) */
     val langsRanked3: List[(String, Int)] = timed("Part 3: ranking using reduceByKey", rankLangsReduceByKey(langs, wikiRdd))
 
     /* Output the speed of each ranking */
@@ -89,3 +97,4 @@ object WikipediaRanking {
     result
   }
 }
+
