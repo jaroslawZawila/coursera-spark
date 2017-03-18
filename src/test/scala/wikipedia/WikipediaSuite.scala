@@ -1,12 +1,12 @@
 package wikipedia
 
-import org.scalatest.{FunSuite, BeforeAndAfterAll}
+import org.scalatest.{BeforeAndAfterAll, FunSuite}
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
-
 import org.apache.spark.SparkConf
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
+import org.apache.spark.rdd.RDD
 
 @RunWith(classOf[JUnitRunner])
 class WikipediaSuite extends FunSuite with BeforeAndAfterAll {
@@ -41,12 +41,29 @@ class WikipediaSuite extends FunSuite with BeforeAndAfterAll {
     )
   }
 
+  test("'occurrencesOfLang' should work for empty RDD") {
+    assert(initializeWikipediaRanking(), " -- did you fill in all the values in WikipediaRanking (conf, sc, wikiRdd)?")
+    import WikipediaRanking._
+    val rdd: RDD[WikipediaArticle] = sc.parallelize(Seq())
+    val res = (occurrencesOfLang("Java", rdd) == 0)
+    assert(res, "occurrencesOfLang given (specific) RDD with one element should equal to 1")
+  }
+
   test("'occurrencesOfLang' should work for (specific) RDD with one element") {
     assert(initializeWikipediaRanking(), " -- did you fill in all the values in WikipediaRanking (conf, sc, wikiRdd)?")
     import WikipediaRanking._
     val rdd = sc.parallelize(Seq(WikipediaArticle("title", "Java Jakarta")))
     val res = (occurrencesOfLang("Java", rdd) == 1)
     assert(res, "occurrencesOfLang given (specific) RDD with one element should equal to 1")
+  }
+
+  test("'occurrencesOfLang' should work for (Java not JavaScript) RDD with one element") {
+    assert(initializeWikipediaRanking(), " -- did you fill in all the values in WikipediaRanking (conf, sc, wikiRdd)?")
+    import WikipediaRanking._
+    val rdd = sc.parallelize(Seq(WikipediaArticle("title", "Java Jakarta JavaScript java"),WikipediaArticle("title2", "Java")))
+    val r = occurrencesOfLang("Java", rdd)
+    val res = (occurrencesOfLang("Java", rdd) == 2)
+    assert(res, "occurrencesOfLang given (specific) RDD with one element should equal to 2")
   }
 
   test("'rankLangs' should work for RDD with two elements") {
